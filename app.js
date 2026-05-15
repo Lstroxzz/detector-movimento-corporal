@@ -12,30 +12,36 @@ const statusText = document.querySelector("#statusText");
 const statusDot = document.querySelector("#statusDot");
 const motionList = document.querySelector("#motionList");
 const sensitivity = document.querySelector("#sensitivity");
+const beautyBanner = document.querySelector("#beautyBanner");
 const ctx = canvas.getContext("2d");
 
 const bodyGroups = [
-  { name: "Cabeca", points: [0, 1, 2, 3, 4, 5, 6, 7, 8] },
-  { name: "Ombro esquerdo", points: [11] },
-  { name: "Ombro direito", points: [12] },
-  { name: "Braco esquerdo", points: [11, 13, 15] },
-  { name: "Braco direito", points: [12, 14, 16] },
-  { name: "Mao esquerda", points: [15, 17, 19, 21] },
-  { name: "Mao direita", points: [16, 18, 20, 22] },
-  { name: "Tronco", points: [11, 12, 23, 24] },
-  { name: "Quadril esquerdo", points: [23] },
-  { name: "Quadril direito", points: [24] },
-  { name: "Perna esquerda", points: [23, 25, 27] },
-  { name: "Perna direita", points: [24, 26, 28] },
-  { name: "Pe esquerdo", points: [27, 29, 31] },
-  { name: "Pe direito", points: [28, 30, 32] },
+  { name: "Cabeca", points: [0, 2, 5, 7, 8], anchor: [0, 7, 8] },
+  { name: "Pescoco", points: [7, 8, 11, 12], anchor: [7, 8, 11, 12] },
+  { name: "Ombro esquerdo", points: [11], anchor: [11] },
+  { name: "Ombro direito", points: [12], anchor: [12] },
+  { name: "Braco esquerdo", points: [11, 13, 15], anchor: [13] },
+  { name: "Braco direito", points: [12, 14, 16], anchor: [14] },
+  { name: "Mao esquerda", points: [15, 17, 19, 21], anchor: [15, 19] },
+  { name: "Mao direita", points: [16, 18, 20, 22], anchor: [16, 20] },
+  { name: "Peito", points: [11, 12], anchor: [11, 12] },
+  { name: "Tronco", points: [11, 12, 23, 24], anchor: [11, 12, 23, 24] },
+  { name: "Quadril", points: [23, 24], anchor: [23, 24] },
+  { name: "Perna esquerda", points: [23, 25, 27], anchor: [25] },
+  { name: "Perna direita", points: [24, 26, 28], anchor: [26] },
+  { name: "Pe esquerdo", points: [27, 29, 31], anchor: [29, 31] },
+  { name: "Pe direito", points: [28, 30, 32], anchor: [30, 32] },
 ];
+
+const motionState = new Map();
 
 let poseLandmarker;
 let drawingUtils;
 let previousLandmarks;
+let smoothedLandmarks;
 let lastVideoTime = -1;
 let animationId;
+let cameraStartedAt = 0;
 
 startButton.addEventListener("click", startApp);
 window.addEventListener("resize", resizeCanvas);
@@ -47,6 +53,7 @@ async function startApp() {
   try {
     await setupPoseDetector();
     await setupCamera();
+    cameraStartedAt = performance.now();
     emptyState.classList.add("hidden");
     setStatus("Camera ligada", "live");
     detectLoop();
@@ -115,18 +122,24 @@ function render(result) {
   const landmarks = result.landmarks?.[0];
   if (!landmarks) {
     previousLandmarks = undefined;
+    smoothedLandmarks = undefined;
+    motionState.clear();
+    beautyBanner.classList.remove("visible");
     renderMotionList([]);
     setStatus("Procurando uma pessoa na imagem", "warn");
     return;
   }
 
+  smoothedLandmarks = smoothLandmarks(landmarks, smoothedLandmarks);
+  const readyForSpecialMessage = performance.now() - cameraStartedAt >= 4000;
+  beautyBanner.classList.toggle("visible", readyForSpecialMessage);
   setStatus("Detectando movimento", "live");
-  drawPose(landmarks);
+  drawPose(smoothedLandmarks);
 
-  const movingGroups = getMovingGroups(landmarks);
-  drawMovingLabels(landmarks, movingGroups);
+  const movingGroups = getMovingGroups(smoothedLandmarks);
+  drawMovingLabels(smoothedLandmarks, movingGroups);
   renderMotionList(movingGroups);
-  previousLandmarks = landmarks.map((point) => ({ ...point }));
+  previousLandmarks = smoothedLandmarks.map((point) => ({ ...point }));
 }
 
 function drawPose(landmarks) {
@@ -158,27 +171,34 @@ function getMovingGroups(landmarks) {
     .map((group) => {
       const visiblePoints = group.points
         .map((index) => [landmarks[index], previousLandmarks[index]])
-        .filter(([current, previous]) => current && previous && current.visibility > 0.45);
+        .filter(([current, previous]) => current && previous && getVisibility(current) > 0.5);
 
-      if (!visiblePoints.length) return null;
+      if (!visiblePoints.length) {
+        motionState.set(group.name, (motionState.get(group.name) || 0) * 0.78);
+        return null;
+      }
 
-      const motion =
+      const rawMotion =
         visiblePoints.reduce((total, [current, previous]) => {
           const dx = current.x - previous.x;
           const dy = current.y - previous.y;
           return total + Math.hypot(dx, dy);
         }, 0) / visiblePoints.length;
 
+      const previousMotion = motionState.get(group.name) || 0;
+      const motion = previousMotion * 0.62 + rawMotion * 0.38;
+      motionState.set(group.name, motion);
+
       return motion > threshold ? { ...group, motion } : null;
     })
     .filter(Boolean)
     .sort((a, b) => b.motion - a.motion)
-    .slice(0, 7);
+    .slice(0, 8);
 }
 
 function drawMovingLabels(landmarks, movingGroups) {
   movingGroups.forEach((group) => {
-    const anchor = averagePoint(group.points.map((index) => landmarks[index]).filter(Boolean));
+    const anchor = averagePoint(group.anchor.map((index) => landmarks[index]).filter(Boolean));
     if (!anchor) return;
 
     const x = canvas.width - anchor.x * canvas.width;
@@ -208,6 +228,26 @@ function drawMovingLabels(landmarks, movingGroups) {
     ctx.strokeStyle = "#34d399";
     ctx.stroke();
   });
+}
+
+function smoothLandmarks(current, previous) {
+  const alpha = previous ? 0.36 : 1;
+
+  return current.map((point, index) => {
+    const oldPoint = previous?.[index];
+    if (!oldPoint || getVisibility(point) < 0.35) return { ...point };
+
+    return {
+      ...point,
+      x: oldPoint.x + (point.x - oldPoint.x) * alpha,
+      y: oldPoint.y + (point.y - oldPoint.y) * alpha,
+      z: oldPoint.z + (point.z - oldPoint.z) * alpha,
+    };
+  });
+}
+
+function getVisibility(point) {
+  return point.visibility ?? point.presence ?? 1;
 }
 
 function renderMotionList(groups) {
