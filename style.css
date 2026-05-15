@@ -76,34 +76,6 @@ canvas {
   pointer-events: none;
 }
 
-.beauty-banner {
-  position: absolute;
-  left: 50%;
-  top: 18px;
-  z-index: 2;
-  width: min(560px, calc(100% - 32px));
-  padding: 13px 18px;
-  border: 1px solid rgba(52, 211, 153, 0.55);
-  border-radius: 8px;
-  background: rgba(18, 20, 22, 0.82);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
-  color: var(--text);
-  font-weight: 900;
-  text-align: center;
-  text-transform: uppercase;
-  transform: translate(-50%, -90px);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 180ms ease,
-    transform 220ms ease;
-}
-
-.beauty-banner.visible {
-  transform: translate(-50%, 0);
-  opacity: 1;
-}
-
 .empty-state {
   position: absolute;
   inset: 0;
