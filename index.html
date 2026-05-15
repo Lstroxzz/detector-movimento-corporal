@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Detector de Movimento Corporal</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="stage" aria-label="Camera com deteccao corporal">
+        <div class="camera-frame">
+          <video id="camera" playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div class="empty-state" id="emptyState">
+            <p>Camera pronta para iniciar</p>
+            <button id="startButton" type="button">Ligar camera</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel" aria-label="Leitura de movimento">
+        <div>
+          <p class="eyebrow">Movimento agora</p>
+          <h1>Detector corporal</h1>
+        </div>
+
+        <div class="status-card">
+          <span id="statusDot" class="status-dot idle" aria-hidden="true"></span>
+          <p id="statusText">Aguardando camera</p>
+        </div>
+
+        <div class="readout">
+          <h2>Partes em movimento</h2>
+          <ul id="motionList">
+            <li>Nenhum movimento detectado ainda</li>
+          </ul>
+        </div>
+
+        <div class="meter-wrap">
+          <label for="sensitivity">Sensibilidade</label>
+          <input id="sensitivity" type="range" min="4" max="28" value="12" />
+        </div>
+
+        <p class="note">
+          A deteccao acontece no seu navegador. Se o navegador pedir permissao,
+          permita o uso da camera.
+        </p>
+      </aside>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
