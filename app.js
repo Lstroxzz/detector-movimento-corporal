@@ -6,51 +6,80 @@ const statusText = document.querySelector("#statusText");
 const statusDot = document.querySelector("#statusDot");
 const motionList = document.querySelector("#motionList");
 const sensitivity = document.querySelector("#sensitivity");
-const beautyBanner = ensureBeautyBanner();
 const ctx = canvas.getContext("2d");
 
 const bodyGroups = [
-  { name: "Cabeca", points: [0, 2, 5, 7, 8], anchor: [0, 7, 8] },
-  { name: "Pescoco", points: [7, 8, 11, 12], anchor: [7, 8, 11, 12] },
-  { name: "Ombro esquerdo", points: [11], anchor: [11] },
-  { name: "Ombro direito", points: [12], anchor: [12] },
-  { name: "Braco esquerdo", points: [11, 13, 15], anchor: [13] },
-  { name: "Braco direito", points: [12, 14, 16], anchor: [14] },
-  { name: "Mao esquerda", points: [15, 17, 19, 21], anchor: [15, 19] },
-  { name: "Mao direita", points: [16, 18, 20, 22], anchor: [16, 20] },
-  { name: "Peito", points: [11, 12], anchor: [11, 12] },
-  { name: "Tronco", points: [11, 12, 23, 24], anchor: [11, 12, 23, 24] },
-  { name: "Quadril", points: [23, 24], anchor: [23, 24] },
-  { name: "Perna esquerda", points: [23, 25, 27], anchor: [25] },
-  { name: "Perna direita", points: [24, 26, 28], anchor: [26] },
-  { name: "Pe esquerdo", points: [27, 29, 31], anchor: [29, 31] },
-  { name: "Pe direito", points: [28, 30, 32], anchor: [30, 32] },
+  { name: "Cabeca", source: "pose", points: [0, 2, 5, 7, 8], anchor: [0, 7, 8] },
+  { name: "Pescoco", source: "pose", points: [7, 8, 11, 12], anchor: [7, 8, 11, 12] },
+  { name: "Ombro esquerdo", source: "pose", points: [11], anchor: [11] },
+  { name: "Ombro direito", source: "pose", points: [12], anchor: [12] },
+  { name: "Braco esquerdo", source: "pose", points: [11, 13], anchor: [13] },
+  { name: "Braco direito", source: "pose", points: [12, 14], anchor: [14] },
+  { name: "Antebraco esquerdo", source: "pose", points: [13, 15], anchor: [13, 15] },
+  { name: "Antebraco direito", source: "pose", points: [14, 16], anchor: [14, 16] },
+  { name: "Peito", source: "pose", points: [11, 12], anchor: [11, 12] },
+  { name: "Abdomen", source: "pose", points: [11, 12, 23, 24], anchor: [11, 12, 23, 24] },
+  { name: "Quadril", source: "pose", points: [23, 24], anchor: [23, 24] },
+  { name: "Coxa esquerda", source: "pose", points: [23, 25], anchor: [23, 25] },
+  { name: "Coxa direita", source: "pose", points: [24, 26], anchor: [24, 26] },
+  { name: "Canela esquerda", source: "pose", points: [25, 27], anchor: [25, 27] },
+  { name: "Canela direita", source: "pose", points: [26, 28], anchor: [26, 28] },
+  { name: "Pe esquerdo", source: "pose", points: [27, 29, 31], anchor: [29, 31] },
+  { name: "Pe direito", source: "pose", points: [28, 30, 32], anchor: [30, 32] },
+];
+
+const handParts = [
+  { name: "Palma", points: [0, 1, 5, 9, 13, 17], anchor: [0, 5, 9, 13, 17] },
+  { name: "Polegar", points: [1, 2, 3, 4], anchor: [3, 4] },
+  { name: "Ponta do polegar", points: [4], anchor: [4] },
+  { name: "Indicador", points: [5, 6, 7, 8], anchor: [7, 8] },
+  { name: "Ponta do indicador", points: [8], anchor: [8] },
+  { name: "Dedo medio", points: [9, 10, 11, 12], anchor: [11, 12] },
+  { name: "Ponta do dedo medio", points: [12], anchor: [12] },
+  { name: "Anelar", points: [13, 14, 15, 16], anchor: [15, 16] },
+  { name: "Ponta do anelar", points: [16], anchor: [16] },
+  { name: "Mindinho", points: [17, 18, 19, 20], anchor: [19, 20] },
+  { name: "Ponta do mindinho", points: [20], anchor: [20] },
+];
+
+const faceParts = [
+  { name: "Rosto", points: [10, 152, 234, 454], anchor: [10, 152, 234, 454] },
+  { name: "Testa", points: [10, 151, 9], anchor: [10] },
+  { name: "Olho esquerdo", points: [33, 133, 159, 145], anchor: [33, 133] },
+  { name: "Olho direito", points: [263, 362, 386, 374], anchor: [263, 362] },
+  { name: "Nariz", points: [1, 2, 98, 327], anchor: [1] },
+  { name: "Boca", points: [13, 14, 61, 291], anchor: [13, 14] },
+  { name: "Queixo", points: [152, 199, 200], anchor: [152] },
+  { name: "Bochecha esquerda", points: [234, 93, 132], anchor: [234] },
+  { name: "Bochecha direita", points: [454, 323, 361], anchor: [454] },
 ];
 
 const motionState = new Map();
 
 let FilesetResolver;
 let PoseLandmarker;
+let HandLandmarker;
+let FaceLandmarker;
 let DrawingUtils;
 let poseLandmarker;
+let handLandmarker;
+let faceLandmarker;
 let drawingUtils;
-let previousLandmarks;
-let smoothedLandmarks;
+let previousFrame;
+let smoothedFrame;
 let lastVideoTime = -1;
 let animationId;
-let cameraStartedAt = 0;
 
 startButton.addEventListener("click", startApp);
 window.addEventListener("resize", resizeCanvas);
 
 async function startApp() {
   startButton.disabled = true;
-  setStatus("Carregando detector corporal", "warn");
+  setStatus("Carregando detectores", "warn");
 
   try {
-    await setupPoseDetector();
+    await setupDetectors();
     await setupCamera();
-    cameraStartedAt = performance.now();
     emptyState.classList.add("hidden");
     setStatus("Camera ligada", "live");
     detectLoop();
@@ -64,13 +93,12 @@ async function startApp() {
   }
 }
 
-async function setupPoseDetector() {
-  if (poseLandmarker) return;
+async function setupDetectors() {
+  if (poseLandmarker && handLandmarker && faceLandmarker) return;
 
-  if (!FilesetResolver || !PoseLandmarker || !DrawingUtils) {
-    ({ FilesetResolver, PoseLandmarker, DrawingUtils } = await import(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14"
-    ));
+  if (!FilesetResolver) {
+    ({ FilesetResolver, PoseLandmarker, HandLandmarker, FaceLandmarker, DrawingUtils } =
+      await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14"));
   }
 
   const vision = await FilesetResolver.forVisionTasks(
@@ -87,6 +115,32 @@ async function setupPoseDetector() {
     numPoses: 1,
     minPoseDetectionConfidence: 0.55,
     minPosePresenceConfidence: 0.55,
+    minTrackingConfidence: 0.55,
+  });
+
+  handLandmarker = await HandLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
+      delegate: "GPU",
+    },
+    runningMode: "VIDEO",
+    numHands: 2,
+    minHandDetectionConfidence: 0.55,
+    minHandPresenceConfidence: 0.55,
+    minTrackingConfidence: 0.55,
+  });
+
+  faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
+      delegate: "GPU",
+    },
+    runningMode: "VIDEO",
+    numFaces: 1,
+    minFaceDetectionConfidence: 0.55,
+    minFacePresenceConfidence: 0.55,
     minTrackingConfidence: 0.55,
   });
 
@@ -111,109 +165,181 @@ async function setupCamera() {
 function detectLoop() {
   if (video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
-    const result = poseLandmarker.detectForVideo(video, performance.now());
-    render(result);
+    const now = performance.now();
+    const frame = {
+      pose: poseLandmarker.detectForVideo(video, now).landmarks?.[0],
+      hands: readHands(handLandmarker.detectForVideo(video, now)),
+      face: faceLandmarker.detectForVideo(video, now).faceLandmarks?.[0],
+    };
+    render(frame);
   }
 
   animationId = requestAnimationFrame(detectLoop);
 }
 
-function render(result) {
+function render(frame) {
   resizeCanvas();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const landmarks = result.landmarks?.[0];
-  if (!landmarks) {
-    previousLandmarks = undefined;
-    smoothedLandmarks = undefined;
+  if (!frame.pose && !frame.hands.length && !frame.face) {
+    previousFrame = undefined;
+    smoothedFrame = undefined;
     motionState.clear();
-    beautyBanner.classList.remove("visible");
     renderMotionList([]);
     setStatus("Procurando uma pessoa na imagem", "warn");
     return;
   }
 
-  smoothedLandmarks = smoothLandmarks(landmarks, smoothedLandmarks);
-  const readyForSpecialMessage = performance.now() - cameraStartedAt >= 4000;
-  beautyBanner.classList.toggle("visible", readyForSpecialMessage);
-  setStatus("Detectando movimento", "live");
-  drawPose(smoothedLandmarks);
+  smoothedFrame = smoothFrame(frame, smoothedFrame);
+  setStatus("Detectando corpo, rosto e maos", "live");
+  drawDetections(smoothedFrame);
 
-  const movingGroups = getMovingGroups(smoothedLandmarks);
-  drawMovingLabels(smoothedLandmarks, movingGroups);
+  const movingGroups = getMovingGroups(smoothedFrame);
+  drawMovingLabels(smoothedFrame, movingGroups);
   renderMotionList(movingGroups);
-  previousLandmarks = smoothedLandmarks.map((point) => ({ ...point }));
+  previousFrame = cloneFrame(smoothedFrame);
 }
 
-function drawPose(landmarks) {
+function readHands(result) {
+  return (result.landmarks || []).map((landmarks, index) => {
+    const handedness = result.handednesses?.[index]?.[0]?.categoryName;
+    return {
+      id: handedness || `Mao ${index + 1}`,
+      label: handedness === "Left" ? "esquerda" : handedness === "Right" ? "direita" : `${index + 1}`,
+      landmarks,
+    };
+  });
+}
+
+function drawDetections(frame) {
   ctx.save();
   ctx.scale(-1, 1);
   ctx.translate(-canvas.width, 0);
 
-  drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
-    color: "rgba(255, 255, 255, 0.62)",
-    lineWidth: 3,
+  if (frame.pose) {
+    drawingUtils.drawConnectors(frame.pose, PoseLandmarker.POSE_CONNECTIONS, {
+      color: "rgba(255, 255, 255, 0.56)",
+      lineWidth: 3,
+    });
+    drawingUtils.drawLandmarks(frame.pose, {
+      color: "#34d399",
+      fillColor: "#121416",
+      lineWidth: 2,
+      radius: 4,
+    });
+  }
+
+  frame.hands.forEach((hand) => {
+    drawingUtils.drawConnectors(hand.landmarks, HandLandmarker.HAND_CONNECTIONS, {
+      color: "rgba(56, 189, 248, 0.92)",
+      lineWidth: 3,
+    });
+    drawingUtils.drawLandmarks(hand.landmarks, {
+      color: "#38bdf8",
+      fillColor: "#081216",
+      lineWidth: 2,
+      radius: 3,
+    });
   });
 
-  drawingUtils.drawLandmarks(landmarks, {
-    color: "#34d399",
-    fillColor: "#121416",
-    lineWidth: 2,
-    radius: 4,
-  });
+  if (frame.face) {
+    drawingUtils.drawLandmarks(frame.face, {
+      color: "rgba(245, 158, 11, 0.72)",
+      fillColor: "rgba(18, 20, 22, 0.55)",
+      lineWidth: 1,
+      radius: 1.2,
+    });
+  }
 
   ctx.restore();
 }
 
-function getMovingGroups(landmarks) {
-  if (!previousLandmarks) return [];
+function getMovingGroups(frame) {
+  if (!previousFrame) return [];
 
+  const groups = [];
   const threshold = Number(sensitivity.value) / 1000;
 
-  return bodyGroups
-    .map((group) => {
-      const visiblePoints = group.points
-        .map((index) => [landmarks[index], previousLandmarks[index]])
-        .filter(([current, previous]) => current && previous && getVisibility(current) > 0.5);
+  if (frame.pose && previousFrame.pose) {
+    bodyGroups.forEach((group) => {
+      groups.push(measureGroup(group.name, group.points, group.anchor, frame.pose, previousFrame.pose, threshold));
+    });
+  }
 
-      if (!visiblePoints.length) {
-        motionState.set(group.name, (motionState.get(group.name) || 0) * 0.78);
-        return null;
-      }
+  if (frame.face && previousFrame.face) {
+    faceParts.forEach((group) => {
+      groups.push(measureGroup(group.name, group.points, group.anchor, frame.face, previousFrame.face, threshold * 0.7));
+    });
+  }
 
-      const rawMotion =
-        visiblePoints.reduce((total, [current, previous]) => {
-          const dx = current.x - previous.x;
-          const dy = current.y - previous.y;
-          return total + Math.hypot(dx, dy);
-        }, 0) / visiblePoints.length;
+  frame.hands.forEach((hand) => {
+    const previousHand = previousFrame.hands.find((item) => item.id === hand.id);
+    if (!previousHand) return;
 
-      const previousMotion = motionState.get(group.name) || 0;
-      const motion = previousMotion * 0.62 + rawMotion * 0.38;
-      motionState.set(group.name, motion);
+    handParts.forEach((group) => {
+      groups.push(
+        measureGroup(
+          `${group.name} ${hand.label}`,
+          group.points,
+          group.anchor,
+          hand.landmarks,
+          previousHand.landmarks,
+          threshold * 0.75,
+        ),
+      );
+    });
+  });
 
-      return motion > threshold ? { ...group, motion } : null;
-    })
+  return groups
     .filter(Boolean)
     .sort((a, b) => b.motion - a.motion)
-    .slice(0, 8);
+    .slice(0, 12);
 }
 
-function drawMovingLabels(landmarks, movingGroups) {
-  movingGroups.forEach((group) => {
-    const anchor = averagePoint(group.anchor.map((index) => landmarks[index]).filter(Boolean));
-    if (!anchor) return;
+function measureGroup(name, pointIndexes, anchorIndexes, currentLandmarks, previousLandmarksForGroup, threshold) {
+  const visiblePoints = pointIndexes
+    .map((index) => [currentLandmarks[index], previousLandmarksForGroup[index]])
+    .filter(([current, previous]) => current && previous && getVisibility(current) > 0.42);
 
-    const x = canvas.width - anchor.x * canvas.width;
-    const y = anchor.y * canvas.height;
+  if (!visiblePoints.length) {
+    motionState.set(name, (motionState.get(name) || 0) * 0.78);
+    return null;
+  }
+
+  const rawMotion =
+    visiblePoints.reduce((total, [current, previous]) => {
+      const dx = current.x - previous.x;
+      const dy = current.y - previous.y;
+      return total + Math.hypot(dx, dy);
+    }, 0) / visiblePoints.length;
+
+  const previousMotion = motionState.get(name) || 0;
+  const motion = previousMotion * 0.56 + rawMotion * 0.44;
+  motionState.set(name, motion);
+
+  return motion > threshold
+    ? {
+        name,
+        motion,
+        anchor: averagePoint(anchorIndexes.map((index) => currentLandmarks[index]).filter(Boolean)),
+      }
+    : null;
+}
+
+function drawMovingLabels(frame, movingGroups) {
+  movingGroups.forEach((group) => {
+    if (!group.anchor) return;
+
+    const x = canvas.width - group.anchor.x * canvas.width;
+    const y = group.anchor.y * canvas.height;
     const label = group.name;
 
-    ctx.font = "700 14px Inter, system-ui, sans-serif";
+    ctx.font = "700 13px Inter, system-ui, sans-serif";
     const metrics = ctx.measureText(label);
-    const boxWidth = metrics.width + 22;
-    const boxHeight = 30;
+    const boxWidth = metrics.width + 20;
+    const boxHeight = 28;
     const boxX = clamp(x - boxWidth / 2, 8, canvas.width - boxWidth - 8);
-    const boxY = clamp(y - 44, 8, canvas.height - boxHeight - 8);
+    const boxY = clamp(y - 42, 8, canvas.height - boxHeight - 8);
 
     ctx.fillStyle = "rgba(18, 20, 22, 0.88)";
     roundRect(ctx, boxX, boxY, boxWidth, boxHeight, 6);
@@ -222,10 +348,10 @@ function drawMovingLabels(landmarks, movingGroups) {
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.fillStyle = "#f3f6f7";
-    ctx.fillText(label, boxX + 11, boxY + 20);
+    ctx.fillText(label, boxX + 10, boxY + 19);
 
     ctx.beginPath();
-    ctx.arc(x, y, 9, 0, Math.PI * 2);
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(52, 211, 153, 0.34)";
     ctx.fill();
     ctx.strokeStyle = "#34d399";
@@ -233,12 +359,26 @@ function drawMovingLabels(landmarks, movingGroups) {
   });
 }
 
-function smoothLandmarks(current, previous) {
-  const alpha = previous ? 0.36 : 1;
+function smoothFrame(current, previous) {
+  return {
+    pose: smoothLandmarks(current.pose, previous?.pose, 0.38),
+    face: smoothLandmarks(current.face, previous?.face, 0.46),
+    hands: current.hands.map((hand) => {
+      const previousHand = previous?.hands.find((item) => item.id === hand.id);
+      return {
+        ...hand,
+        landmarks: smoothLandmarks(hand.landmarks, previousHand?.landmarks, 0.5),
+      };
+    }),
+  };
+}
+
+function smoothLandmarks(current, previous, alpha) {
+  if (!current) return undefined;
 
   return current.map((point, index) => {
     const oldPoint = previous?.[index];
-    if (!oldPoint || getVisibility(point) < 0.35) return { ...point };
+    if (!oldPoint || getVisibility(point) < 0.28) return { ...point };
 
     return {
       ...point,
@@ -247,6 +387,17 @@ function smoothLandmarks(current, previous) {
       z: oldPoint.z + (point.z - oldPoint.z) * alpha,
     };
   });
+}
+
+function cloneFrame(frame) {
+  return {
+    pose: frame.pose?.map((point) => ({ ...point })),
+    face: frame.face?.map((point) => ({ ...point })),
+    hands: frame.hands.map((hand) => ({
+      ...hand,
+      landmarks: hand.landmarks.map((point) => ({ ...point })),
+    })),
+  };
 }
 
 function getVisibility(point) {
@@ -305,53 +456,6 @@ function resizeCanvas() {
 function setStatus(message, state) {
   statusText.textContent = message;
   statusDot.className = `status-dot ${state}`;
-}
-
-function ensureBeautyBanner() {
-  const existingBanner = document.querySelector("#beautyBanner");
-  if (existingBanner) return existingBanner;
-
-  const cameraFrame = document.querySelector(".camera-frame");
-  const banner = document.createElement("div");
-  banner.id = "beautyBanner";
-  banner.className = "beauty-banner";
-  banner.setAttribute("aria-live", "polite");
-  banner.textContent = "garota mais bonita do mundo detectada";
-  cameraFrame.appendChild(banner);
-
-  if (!document.querySelector("#beautyBannerStyles")) {
-    const style = document.createElement("style");
-    style.id = "beautyBannerStyles";
-    style.textContent = `
-      .beauty-banner {
-        position: absolute;
-        left: 50%;
-        top: 18px;
-        z-index: 2;
-        width: min(560px, calc(100% - 32px));
-        padding: 13px 18px;
-        border: 1px solid rgba(52, 211, 153, 0.55);
-        border-radius: 8px;
-        background: rgba(18, 20, 22, 0.82);
-        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
-        color: #f3f6f7;
-        font-weight: 900;
-        text-align: center;
-        text-transform: uppercase;
-        transform: translate(-50%, -90px);
-        opacity: 0;
-        transition: opacity 180ms ease, transform 220ms ease;
-      }
-
-      .beauty-banner.visible {
-        transform: translate(-50%, 0);
-        opacity: 1;
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  return banner;
 }
 
 function clamp(value, min, max) {
