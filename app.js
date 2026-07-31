@@ -1,6 +1,7 @@
 const video = document.querySelector("#camera");
 const canvas = document.querySelector("#overlay");
 const emptyState = document.querySelector("#emptyState");
+const emptyStateText = document.querySelector("#emptyStateText");
 const startButton = document.querySelector("#startButton");
 const statusText = document.querySelector("#statusText");
 const statusDot = document.querySelector("#statusDot");
@@ -69,11 +70,17 @@ let previousFrame;
 let smoothedFrame;
 let lastVideoTime = -1;
 let animationId;
+let cameraStream;
+let vision;
+let isStarting = false;
+let isDetecting = false;
 
 startButton.addEventListener("click", startApp);
 window.addEventListener("resize", resizeCanvas);
 
 async function startApp() {
+  if (isStarting) return;
+  isStarting = true;
   startButton.disabled = true;
   setStatus("Carregando detectores", "warn");
 
@@ -81,15 +88,19 @@ async function startApp() {
     await setupDetectors();
     await setupCamera();
     emptyState.classList.add("hidden");
+    lastVideoTime = -1;
+    isDetecting = true;
     setStatus("Camera ligada", "live");
     detectLoop();
   } catch (error) {
     console.error(error);
-    startButton.disabled = false;
+    stopCamera();
     setStatus("Nao foi possivel iniciar a camera", "warn");
     emptyState.classList.remove("hidden");
-    emptyState.querySelector("p").textContent =
-      "Confira a permissao da camera e tente novamente";
+    emptyStateText.textContent = getCameraErrorMessage(error);
+  } finally {
+    isStarting = false;
+    startButton.disabled = false;
   }
 }
 
@@ -101,16 +112,13 @@ async function setupDetectors() {
       await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14"));
   }
 
-  const vision = await FilesetResolver.forVisionTasks(
+  vision ??= await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm",
   );
 
-  poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath:
-        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
-      delegate: "GPU",
-    },
+  poseLandmarker = await createWithFallback(PoseLandmarker, {
+    modelAssetPath:
+      "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
     runningMode: "VIDEO",
     numPoses: 1,
     minPoseDetectionConfidence: 0.55,
@@ -118,12 +126,9 @@ async function setupDetectors() {
     minTrackingConfidence: 0.55,
   });
 
-  handLandmarker = await HandLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath:
-        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
-      delegate: "GPU",
-    },
+  handLandmarker = await createWithFallback(HandLandmarker, {
+    modelAssetPath:
+      "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
     runningMode: "VIDEO",
     numHands: 2,
     minHandDetectionConfidence: 0.55,
@@ -131,12 +136,9 @@ async function setupDetectors() {
     minTrackingConfidence: 0.55,
   });
 
-  faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath:
-        "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
-      delegate: "GPU",
-    },
+  faceLandmarker = await createWithFallback(FaceLandmarker, {
+    modelAssetPath:
+      "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
     runningMode: "VIDEO",
     numFaces: 1,
     minFaceDetectionConfidence: 0.55,
@@ -147,8 +149,28 @@ async function setupDetectors() {
   drawingUtils = new DrawingUtils(ctx);
 }
 
+async function createWithFallback(Landmarker, { modelAssetPath, ...options }) {
+  const create = (delegate) =>
+    Landmarker.createFromOptions(vision, {
+      ...options,
+      baseOptions: { modelAssetPath, delegate },
+    });
+
+  try {
+    return await create("GPU");
+  } catch (gpuError) {
+    console.warn("GPU indisponível; usando CPU para detecção.", gpuError);
+    return create("CPU");
+  }
+}
+
 async function setupCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Este navegador não oferece acesso à câmera.");
+  }
+
+  stopCamera();
+  cameraStream = await navigator.mediaDevices.getUserMedia({
     audio: false,
     video: {
       facingMode: "user",
@@ -157,24 +179,35 @@ async function setupCamera() {
     },
   });
 
-  video.srcObject = stream;
+  video.srcObject = cameraStream;
   await video.play();
   resizeCanvas();
 }
 
 function detectLoop() {
-  if (video.currentTime !== lastVideoTime) {
-    lastVideoTime = video.currentTime;
-    const now = performance.now();
-    const frame = {
-      pose: poseLandmarker.detectForVideo(video, now).landmarks?.[0],
-      hands: readHands(handLandmarker.detectForVideo(video, now)),
-      face: faceLandmarker.detectForVideo(video, now).faceLandmarks?.[0],
-    };
-    render(frame);
+  if (!isDetecting) return;
+
+  try {
+    if (video.currentTime !== lastVideoTime) {
+      lastVideoTime = video.currentTime;
+      const now = performance.now();
+      const frame = {
+        pose: poseLandmarker.detectForVideo(video, now).landmarks?.[0],
+        hands: readHands(handLandmarker.detectForVideo(video, now)),
+        face: faceLandmarker.detectForVideo(video, now).faceLandmarks?.[0],
+      };
+      render(frame);
+    }
+  } catch (error) {
+    console.error(error);
+    isDetecting = false;
+    stopCamera();
+    setStatus("Falha ao processar a câmera", "warn");
+    emptyStateText.textContent = "O detector encontrou um erro. Tente ligar a câmera novamente.";
+    emptyState.classList.remove("hidden");
   }
 
-  animationId = requestAnimationFrame(detectLoop);
+  if (isDetecting) animationId = requestAnimationFrame(detectLoop);
 }
 
 function render(frame) {
@@ -477,6 +510,22 @@ function roundRect(context, x, y, width, height, radius) {
 }
 
 window.addEventListener("beforeunload", () => {
-  cancelAnimationFrame(animationId);
-  video.srcObject?.getTracks().forEach((track) => track.stop());
+  stopCamera();
 });
+
+function stopCamera() {
+  isDetecting = false;
+  cancelAnimationFrame(animationId);
+  cameraStream?.getTracks().forEach((track) => track.stop());
+  cameraStream = undefined;
+  video.srcObject = null;
+}
+
+function getCameraErrorMessage(error) {
+  const errors = {
+    NotAllowedError: "Permissão da câmera negada. Libere o acesso e tente novamente.",
+    NotFoundError: "Nenhuma câmera foi encontrada neste dispositivo.",
+    NotReadableError: "A câmera está sendo usada por outro aplicativo. Feche-o e tente novamente.",
+  };
+  return errors[error.name] || "Não foi possível iniciar. Confira a câmera e tente novamente.";
+}
